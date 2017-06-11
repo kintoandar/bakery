@@ -1,0 +1,4 @@
+---
+- src: https://github.com/William-Yeh/ansible-prometheus 
+  version: 2.3.2
+  name: ansible-prometheus
