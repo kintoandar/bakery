@@ -1,0 +1,19 @@
+{
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "region": "eu-central-1",
+      "source_ami": "ami-7cbc6e13",
+      "instance_type": "t2.micro",
+      "ssh_username": "centos",
+      "associate_public_ip_address": true,
+      "ami_name": "bakery"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "ansible",
+      "playbook_file": "./playbook.yml"
+    }
+  ]
+}

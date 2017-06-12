@@ -1,0 +1,139 @@
+---
+
+- hosts: all
+  gather_facts: true
+  vars:
+    cloud_init: false
+    # Don't want the service starting during the bake process
+    prometheus_use_service: false
+    prometheus_components: [ "prometheus", "alertmanager" ]
+    prometheus_db_path: "/var/lib/prometheus"
+    prometheus_user: "prometheus"
+    prometheus_group: "prometheus"
+
+  roles:
+    - role: ansible-prometheus
+      become: yes
+      when: not cloud_init
+
+  tasks:
+
+    # What to run when baking the image
+    - block:
+        - name: "Backup bakery"
+          local_action: archive path="./" dest="/tmp/bakery.tgz"
+
+        - name: "Store bakery"
+          copy:
+            src: "/tmp/bakery.tgz"
+            dest: "/tmp/bakery.tgz"
+
+        - name: "Create bakery path"
+          file:
+            path: "/root/bakery"
+            state: directory
+            mode: 0755
+          become: true
+
+        - name: "Unpack bakery"
+          unarchive:
+            src: "/tmp/bakery.tgz"
+            dest: "/root/bakery"
+            owner: root
+            group: root
+          become: true
+
+        - name: "Add ansible repo"
+          yum_repository:
+            name: epel
+            description: EPEL YUM repo
+            baseurl: https://download.fedoraproject.org/pub/epel/$releasever/$basearch/
+          become: true
+
+        - name: "Ensure ansible install"
+          yum:
+            name: ansible
+            disable_gpg_check: yes
+            state: present
+          become: true
+
+        - name: "Remove ansible repo"
+          yum_repository:
+            name: epel
+            state: absent
+          become: true
+
+        - name: "Sync data to disk"
+          shell: "sync"
+          become: true
+      when: not cloud_init
+
+    # What to run through cloud-init
+    - block:
+        - name: "Check existing data volume"
+          stat:
+            path: "{{ prometheus_volume }}1"
+          become: true
+          register: volume
+
+        - name: "Create data volume"
+          parted:
+            device: "{{ prometheus_volume }}"
+            number: 1
+            state: present
+            part_start: "0%"
+            part_end: "100%"
+            label: "gpt"
+          become: true
+          when: prometheus_volume is defined and not volume.stat.exists
+
+        - name: "Format data volume"
+          filesystem:
+            fstype: xfs
+            dev: "{{ prometheus_volume }}1"
+            opts: "-L {{ prometheus_volume_label }}"
+          become: true
+          when: prometheus_volume is defined and not volume.stat.exists
+
+        - name: "Mount data volume"
+          mount:
+            path: "{{ prometheus_data_dir }}"
+            src: "LABEL={{ prometheus_volume_label }}"
+            fstype: xfs
+            state: mounted
+          become: true
+          when: prometheus_volume is defined
+
+        - name: "Ensure permissions on data volume"
+          file:
+            path: "{{ prometheus_data_dir }}"
+            state: "directory"
+            owner: "{{ prometheus_user }}"
+            group: "{{ prometheus_group }}"
+            recurse: yes
+          become: true
+          when: prometheus_volume is defined and not volume.stat.exists
+
+        # If the role allows, you could call a specific set of tasks at this point.
+        # For example, templating the configuration files for a given environment.
+        #
+        # - name: "Configure prometheus"
+        #   include_role:
+        #     name: ansible-prometheus
+        #     tasks_from: template_prometheus
+
+        - name: "Start prometheus service"
+          service:
+            name: "{{ item }}"
+            state: started
+            enabled: yes
+          with_items: "{{ prometheus_components }}"
+          become: true
+          when: prometheus_enabled
+
+        - name: "Ensure ansible absent"
+          yum:
+            name: ansible
+            state: absent
+          become: true
+      when: cloud_init
