@@ -17,7 +17,7 @@ This repository illustrates the proposed workflow described on [this blogpost](h
 
 The following sequence diagram describes the workflow:
 
-![bakery_sequence](https://blog.kintoandar.com/images/images/bakery_sequence.jpg)
+![bakery_sequence](https://blog.kintoandar.com/images/bakery_sequence.jpg)
 
 ## Example
 
